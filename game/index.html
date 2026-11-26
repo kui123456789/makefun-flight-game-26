@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skyline Courier — a flight game</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #0b1526; overflow: hidden; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: #eef4fa; }
+  #stage { position: relative; width: 1280px; height: 720px; margin: 0 auto; }
+  #game-canvas { display: block; width: 1280px; height: 720px; background: #2f6fb8; }
+
+  /* ---- HUD ---- */
+  #hud { position: absolute; inset: 0; pointer-events: none; }
+  #hud.hidden { display: none; }
+  .hud-panel {
+    position: absolute; background: rgba(8, 18, 34, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 8px;
+    padding: 8px 12px; backdrop-filter: blur(2px);
+  }
+  .hud-panel .label { font-size: 10px; letter-spacing: 0.14em; color: #9fc3e8; text-transform: uppercase; }
+  .hud-panel .value { font-size: 24px; font-weight: 700; line-height: 1.1; color: #fff; font-variant-numeric: tabular-nums; }
+  .hud-panel .sub { font-size: 11px; color: #bcd6ee; }
+  #hud-left { top: 64px; left: 14px; display: flex; flex-direction: column; gap: 8px; }
+  #hud-left .hud-panel { position: static; width: 168px; }
+  #hud-right { top: 64px; right: 14px; display: flex; flex-direction: column; gap: 8px; }
+  #hud-right .hud-panel { position: static; width: 168px; text-align: right; }
+  .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.18); overflow: hidden; margin-top: 5px; }
+  .bar > div { height: 100%; border-radius: 4px; transition: width 0.15s linear; }
+  #hud-mission-bar {
+    top: 14px; left: 50%; transform: translateX(-50%);
+    background: rgba(8, 18, 34, 0.72); border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 8px; padding: 6px 18px; text-align: center; pointer-events: none;
+  }
+  #hud-mission { font-size: 15px; font-weight: 700; letter-spacing: 0.06em; }
+  #hud-objective { font-size: 12px; color: #cfe4f7; margin-top: 2px; }
+  #hud-state { font-size: 11px; font-weight: 700; letter-spacing: 0.2em; }
+  #hud-message {
+    position: absolute; top: 96px; left: 50%; transform: translateX(-50%);
+    font-size: 26px; font-weight: 800; color: #ffd75e;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.7); transition: opacity 0.3s; white-space: nowrap;
+  }
+  #hud-bottom {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 10px; align-items: center; pointer-events: auto;
+    background: rgba(8, 18, 34, 0.72); border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 8px; padding: 8px 14px;
+  }
+  #hud-bottom label { font-size: 11px; letter-spacing: 0.12em; color: #9fc3e8; text-transform: uppercase; }
+  #throttle-slider { width: 180px; accent-color: #ffb020; }
+  #hud-bottom button {
+    background: #ffb020; color: #1a1206; border: none; border-radius: 6px;
+    padding: 7px 14px; font-weight: 700; cursor: pointer; font-size: 13px;
+  }
+  #hud-bottom button:hover { background: #ffc84d; }
+
+  /* ---- Overlays ---- */
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: rgba(6, 14, 28, 0.55); padding: 24px;
+  }
+  .overlay.hidden { display: none; }
+  .overlay h1 { font-size: 56px; font-weight: 900; letter-spacing: 0.02em; color: #fff; text-shadow: 0 4px 18px rgba(0,0,0,0.6); }
+  .overlay h1 .accent { color: #ffb020; }
+  .overlay .tagline { font-size: 17px; color: #d7e8f8; margin: 10px 0 22px; max-width: 640px; line-height: 1.5; }
+  .mission-row { display: flex; gap: 14px; margin-bottom: 22px; }
+  .mission-card {
+    width: 240px; text-align: left; background: rgba(10, 24, 44, 0.85);
+    border: 2px solid rgba(255,255,255,0.25); border-radius: 10px; color: #eef4fa;
+    padding: 14px; cursor: pointer; font-family: inherit;
+  }
+  .mission-card:hover { border-color: #ffb020; }
+  .mission-card.selected { border-color: #ffb020; background: rgba(60, 42, 8, 0.85); }
+  .mission-card strong { display: block; font-size: 17px; margin-bottom: 6px; }
+  .mission-card span { display: block; font-size: 13px; color: #c6dcef; line-height: 1.45; min-height: 38px; }
+  .mission-card em { display: block; font-style: normal; font-size: 12px; color: #ffb020; margin-top: 8px; }
+  .big-btn {
+    background: #ffb020; color: #1a1206; border: none; border-radius: 8px;
+    padding: 14px 42px; font-size: 19px; font-weight: 800; cursor: pointer; letter-spacing: 0.03em;
+  }
+  .big-btn:hover { background: #ffc84d; }
+  .controls { margin-top: 20px; font-size: 13px; color: #bcd6ee; line-height: 1.9; }
+  .controls b { color: #fff; background: rgba(255,255,255,0.14); border-radius: 4px; padding: 1px 7px; font-weight: 600; }
+  #end-title { font-size: 48px; }
+  #end-detail { font-size: 17px; color: #d7e8f8; margin: 10px 0 6px; max-width: 620px; line-height: 1.5; }
+  #end-score { font-size: 20px; font-weight: 700; color: #ffd75e; margin-bottom: 22px; }
+  .btn-row { display: flex; gap: 12px; }
+  .ghost-btn {
+    background: transparent; color: #fff; border: 2px solid rgba(255,255,255,0.6);
+    border-radius: 8px; padding: 12px 26px; font-size: 16px; font-weight: 700; cursor: pointer;
+  }
+  .ghost-btn:hover { border-color: #fff; }
+  #pause-screen h1 { font-size: 44px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game-canvas" width="1280" height="720"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="hud-mission-bar" class="hud-panel">
+      <div id="hud-mission">Ring Run</div>
+      <div id="hud-objective">Fly the rings, then land on the runway</div>
+      <div id="hud-state">READY</div>
+    </div>
+    <div id="hud-left">
+      <div class="hud-panel"><div class="label">Altitude</div><div class="value" id="hud-alt">0 m</div><div class="sub" id="hud-vspeed">+0 ft/min</div></div>
+      <div class="hud-panel"><div class="label">Speed</div><div class="value" id="hud-speed">0 kt</div><div class="sub">stall 47 kt · max 229 kt</div></div>
+      <div class="hud-panel"><div class="label">Heading</div><div class="value" id="hud-heading">0°</div><div class="sub">compass tape above the sky</div></div>
+    </div>
+    <div id="hud-right">
+      <div class="hud-panel"><div class="label">Score</div><div class="value" id="hud-score">0</div><div class="sub">Rings <span id="hud-rings">0/8</span></div></div>
+      <div class="hud-panel"><div class="label">Throttle</div><div class="value" id="hud-throttle">0%</div><div class="bar"><div id="hud-throttle-bar" style="width:0%;background:#ffb020"></div></div></div>
+      <div class="hud-panel"><div class="label">Fuel</div><div class="value" id="hud-fuel">100%</div><div class="bar"><div id="hud-fuel-bar" style="width:100%;background:#39d353"></div></div></div>
+      <div class="hud-panel"><div class="label">Damage</div><div class="value" id="hud-damage">0%</div><div class="bar"><div id="hud-damage-bar" style="width:0%;background:#ff5a4e"></div></div></div>
+    </div>
+    <div id="hud-message"></div>
+    <div id="hud-bottom">
+      <label for="throttle-slider">Throttle</label>
+      <input type="range" id="throttle-slider" min="0" max="100" value="55">
+      <button id="btn-restart" type="button">Restart (R)</button>
+    </div>
+  </div>
+
+  <div id="title-screen" class="overlay">
+    <h1>SKYLINE <span class="accent">COURIER</span></h1>
+    <p class="tagline">A little red prop plane, one long valley, and a strip at the far end.
+      Thread the rings, watch your fuel, and bring her home in one piece.</p>
+    <div class="mission-row" id="mission-cards"></div>
+    <button id="btn-start" class="big-btn" type="button">Take off — Enter</button>
+    <p class="controls">
+      <b>↑ / ↓</b> pitch &nbsp; <b>← / →</b> or <b>A / D</b> bank &amp; turn &nbsp;
+      <b>W / S</b> throttle &nbsp; <b>Space</b> brake &nbsp; <b>1 / 2 / 3</b> mission &nbsp; <b>R</b> restart &nbsp; <b>P</b> pause<br>
+      Mouse: drag on the sky to steer, or use the throttle slider below.
+    </p>
+  </div>
+
+  <div id="end-screen" class="overlay hidden">
+    <h1 id="end-title">Landed</h1>
+    <p id="end-detail"></p>
+    <p id="end-score"></p>
+    <div class="btn-row">
+      <button id="btn-fly-again" class="big-btn" type="button">Fly again (R)</button>
+      <button id="btn-menu" class="ghost-btn" type="button">Change mission</button>
+    </div>
+  </div>
+
+  <div id="pause-screen" class="overlay hidden">
+    <h1>Paused</h1>
+    <p class="tagline">Press P to keep flying.</p>
+  </div>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
